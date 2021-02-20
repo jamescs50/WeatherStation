@@ -1,5 +1,5 @@
 # WeatherStation
-Arduino / RPi setiup for weather monitoring sensors using MQTT
+Arduino setup for weather monitoring sensors using MQTT
 
 ## Rain, Winds speed and wind direction 
 using the [kit from Sparkfun](https://www.sparkfun.com/products/15901)
