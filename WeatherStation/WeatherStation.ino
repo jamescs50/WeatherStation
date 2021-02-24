@@ -9,6 +9,24 @@
   #include <ESP8266WiFi.h>
 #endif
 
+//for ENVII sensor
+#include <Wire.h>
+#include "Adafruit_Sensor.h"
+#include <Adafruit_BMP280.h>
+#include "SHT3X.h"
+
+
+SHT3X sht30;
+Adafruit_BMP280 bme;
+float tmp = 0.0;
+float hum = 0.0;
+float pressure = 0.0;
+boolean ENVII_On = false; //turn off if not attached
+char tmpTopic[50];
+char humTopic[50];
+char presTopic[50];
+
+
 #include "arduino_secrets.h"
 ///////please enter your sensitive data in the Secret tab/arduino_secrets.h
 char ssid[] = SECRET_SSID;        // your network SSID (name)
@@ -20,13 +38,14 @@ char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as k
 // 3) Change broker value to a server with a known SSL/TLS root certificate 
 //    flashed in the WiFi module.
 
-const bool debugging = false;
+const bool debugging = true;
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
 const long interval = 1000;
 unsigned long previousMillis = 0;
+char errorTopic[50];
 
 int count = 0;
 
@@ -42,15 +61,15 @@ const int Rrefer = 1000;
 //Anemometer
 unsigned volatile int windCounter = 0;
 int windTime;
-char windSpeedTopic = "weather/station1/windspeed";
-char windDirTopic = "weather/station1/winddirection";
+char windSpeedTopic[50];
+char windDirTopic[50];
 
 
 //Rain guage
 unsigned volatile int rainCounter = 0;
 int rainReadings[60]; //rain readings over the last hour
 long rainTime;
-char rainTopic = "weather/station1/rain";
+char rainTopic[50];
 
 boolean lightOn = false;
 
@@ -72,6 +91,14 @@ void setup() {
     //Serial.print(".");
     delay(5000);
   }
+
+  sprintf(rainTopic,"%srain",topic_head);
+  sprintf(windSpeedTopic, "%swindspeed",topic_head);
+  sprintf(windDirTopic, "%swinddirection",topic_head);
+  sprintf(tmpTopic,"%stemperature",topic_head);
+  sprintf(humTopic, "%shumidity",topic_head);
+  sprintf(presTopic, "%spressure",topic_head);
+  sprintf(errorTopic, "%serror",topic_head);
 
   if (debugging)
   {
@@ -103,6 +130,9 @@ void setup() {
   pinMode(3,INPUT);
   pinMode(vaneSensorPin,INPUT);
 
+  if(ENVII_On){
+    setup_ENVII();
+  }
   
   attachInterrupt(digitalPinToInterrupt(2), rain_ISR, FALLING);  //pin 2 (Uno)
   //while the rain guage is off at rest it is possible for the anemometer to rest with the switch on 
@@ -110,6 +140,20 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(3), wind_ISR, FALLING);  //pin 2 (Uno)
 
 
+}
+
+void setup_ENVII(){
+  Wire.begin();
+  Serial.begin(9600);
+  Serial.println(F("ENV Unit(SHT30 and BMP280) test..."));
+
+  while (!bme.begin(0x76)){  
+    Serial.println("Could not find a valid BMP280 sensor, check wiring!");
+    mqttClient.beginMessage(errorTopic);
+    mqttClient.print("Could not find EVNII- check wiring!");
+    mqttClient.endMessage();
+
+  }
 }
 
 void loop() {
@@ -152,23 +196,45 @@ void loop() {
 
     
     
-    mqttClient.beginMessage("weather/station1/rain");
+    mqttClient.beginMessage(rainTopic);
     mqttClient.print(rainCounter);
     mqttClient.endMessage();
 
-    mqttClient.beginMessage("weather/station1/windspeed");
+    mqttClient.beginMessage(windSpeedTopic);
     mqttClient.print(windCounter);
     mqttClient.endMessage();
 
-    mqttClient.beginMessage("weather/station1/winddirection");
+    mqttClient.beginMessage(windDirTopic);
     mqttClient.print(wDirection);
     mqttClient.endMessage();
 
     rainCounter =0;
     windCounter = 0;
 
+    pressure = bme.readPressure();
+    if(sht30.get()==0){
+      tmp = sht30.cTemp;
+      hum = sht30.humidity;
+    }
+    if (debugging){    
+      Serial.print("Temperatura: ");
+      Serial.print(tmp);
+      
+      Serial.print("f*C Humedad: ");
+      Serial.print(hum);
+      Serial.print("Pressure: ");
+      Serial.println(pressure);
+    }
     
-
+    mqttClient.beginMessage(tmpTopic);
+    mqttClient.print(tmp);
+    mqttClient.endMessage();
+    mqttClient.beginMessage(humTopic);
+    mqttClient.print(hum);
+    mqttClient.endMessage();
+    mqttClient.beginMessage(presTopic);
+    mqttClient.print(pressure);
+    mqttClient.endMessage();
   }
 }
 
